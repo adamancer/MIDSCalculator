@@ -4,7 +4,6 @@ library(dplyr)
 
 read_json_unknownOrMissing <- function(schema = default_schema, type = "file",config) {
 
-
   # Read schema -------------------------------------------------------------
   if (type == "sssom") {
     schema = parse_sssom(config = config)
@@ -13,7 +12,6 @@ read_json_unknownOrMissing <- function(schema = default_schema, type = "file",co
   } else if (type == "interactive") {
     schema <- parse_json(schema)
   }
-  
   # Create list of unknownOrMissing values ----------------------------------
   
   list_UoM <- list()
@@ -51,6 +49,7 @@ read_json_mids_criteria <- function(schema = default_schema,
   } else if (type == "interactive") {
     schema <- parse_json(schema)
   }
+
   # Construct criteria for mids levels --------------------------------------
   #only use mids sections
   midsschema <- schema[grep("mids", names(schema))]
@@ -105,48 +104,40 @@ read_json_mids_criteria <- function(schema = default_schema,
   }
 }
 
+sssom_path <- function(type,config,localpath=F) {
+  if (localpath) {
+    basedir = "sssom/"
+  } else {
+    basedir = "../../data/sssom/"
+  }
+  
+  if (type == "tsv") {
+    path = paste0(basedir,
+                  config$app$sssom_id,
+                  ".sssom.tsv")
+  } else if (type == "yml") {
+    path = paste0(basedir,
+                  config$app$sssom_id,
+                  ".sssom.yml")
+  }
+  return(path)
+}
+
 parse_sssom <- function(config,localpath=F) {
   
   ##read the sssom tsv and yml files provided in config.ini
   #use function arguments to maybe later include support for 
   #loading them through the UI
-  if (localpath) {
-    tsvpath = list.files(paste0(config$app$standard,
-                                "/",
-                                config$app$discipline),
-                         pattern = "*.tsv",
-                         full.names = T)
-    
-    ymlpath = list.files(paste0(config$app$standard,
-                                "/",
-                                config$app$discipline),
-                         pattern = "*.yml",
-                         full.names = T)
-  } else {
-    tsvpath = list.files(paste0("../../data/sssom/",
-                                config$app$standard,
-                                "/",
-                                config$app$discipline),
-                         pattern = "*.tsv",
-                         full.names = T)
-    
-    ymlpath = list.files(paste0("../../data/sssom/",
-                                config$app$standard,
-                                "/",
-                                config$app$discipline),
-                         pattern = "*.yml",
-                         full.names = T)
-  }
+  tsvpath = sssom_path("tsv",config,localpath)
+  ymlpath = sssom_path("yml",config,localpath)
   
   tsv = fread(tsvpath,
               encoding="UTF-8",
               quote="",
               colClasses='character')
   
-  
   yml = read_yaml(ymlpath,
                   readLines.warn=F)
-  
   
   #The schema is hardcoded for GBIF-annotated DwC-Archives
   #so exclude terms from extensions such as GBIF multimedia or Auddubon
@@ -197,18 +188,20 @@ parse_sssom <- function(config,localpath=F) {
     newschema$unknownOrMissing = list()
     
     #add global excluded values
-    for (i in 1:dim(check_all_globals)[1]) {
-      newschema$unknownOrMissing[[i]] = list(value = check_all_globals$RegexRemoval[i],
-                                             midsAchieved = F)
-    }
+    if (dim(check_all_globals)[1] > 0) {
+      for (excluded_iter in 1:dim(check_all_globals)[1]) {
+        newschema$unknownOrMissing[[excluded_iter]] = list(value = check_all_globals$RegexRemoval[excluded_iter],
+                                               midsAchieved = F)
+      }
+    } else {excluded_iter=0}
     
     #add specific excluded values
     if (dim(check_all_specifics)[1] > 0) {
       for (j in 1:dim(check_all_specifics)[1]) {
-        i = i + 1
-        newschema$unknownOrMissing[[i]] = list(value = check_all_specifics$RegexRemoval[j],
-                                               midsAchieved = F,
-                                               property = check_all_specifics$object_id[j])
+        excluded_iter = excluded_iter + 1
+        newschema$unknownOrMissing[[excluded_iter]] = list(value = check_all_specifics$RegexRemoval[j],
+                                                           midsAchieved = F,
+                                                           property = check_all_specifics$object_id[j])
       }
     }
   }
@@ -306,6 +299,31 @@ parse_sssom <- function(config,localpath=F) {
       }
     }
   }
-  #print(newschema)
   return(newschema)
+}
+
+parse_sssom_yml_for_config <- function(localpath = F) {
+  sssom_dir = "../../data/sssom/"
+  if (localpath) {sssom_dir = "sssom"}
+  
+  ymlf_files = list.files(sssom_dir,
+                          pattern = "*.yml",
+                          full.names = T)
+  
+  yml_data = list()
+  for (i in ymlf_files) {
+    yml_temp = read_yaml(i,
+                         readLines.warn=F)
+    yml_data[[yml_temp$mapping_set_id]] = yml_temp 
+  }
+  return(yml_data)
+}
+
+parse_sssom_id <- function(newid,config) {
+  config$app$sssom_id = newid
+  id_chunks = strsplit(newid,split="_")[[1]]
+  config$app$format = id_chunks[2]
+  config$app$discipline = id_chunks[3]
+  config$app$version = id_chunks[4]
+  return(config)
 }

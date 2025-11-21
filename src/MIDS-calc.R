@@ -76,7 +76,6 @@ calculate_mids <- function(gbiffile,
   else if (jsontype == "list"){
     list_criteria <- jsonlist[["criteria"]]
   }
-  
   # Check if separate MIDS conditions are met -------------------------------
   
   #For each MIDS condition in the list, check if the criteria for that condition 

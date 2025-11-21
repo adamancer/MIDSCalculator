@@ -27,6 +27,20 @@ parse_data_file <- function(filename,
                                  uom,
                                  session))
   }
+  
+  if (config$app$format == "minext") {
+    return(parse_minext_zip(filename,
+                            config,
+                            select_props,
+                            uom))
+  }
+}
+
+parse_minext_zip <- function(filename,
+                             config,
+                             select_props,
+                             uom) {
+  
 }
 
 # Function to read parts of a data file of a dwc archive
@@ -184,17 +198,13 @@ parse_dwc_archive <- function(filename,
                               config,
                               select_props,
                               uom) {
+  source(file = "../parse_json_schema.R")
   # read the meta.xml and strip the namespace for easier xpath
   meta = read_xml(unzip(filename,"meta.xml"))
   meta %>% xml_ns_strip()
   file.remove("meta.xml")
   # load namespaces of dwc, dc, ac... from the sssom yaml curie map
-  ymlpath = list.files(paste0("../../data/sssom/",
-                              config$app$standard,
-                              "/",
-                              config$app$discipline),
-                       pattern = "*.yml",
-                       full.names = T)
+  ymlpath = sssom_path("yml",config)
   
   namespaces = read_yaml(ymlpath,
                          readLines.warn = F) %>%
@@ -266,6 +276,7 @@ parse_biocase_archive <- function(filename,
                                   select_props,
                                   uom,
                                   session) {
+  source(file = "../parse_json_schema.R")
   # Read the lookup table from abcd term URI to its xpath
   xpath_mapper = fread("../../data/formats/abcd_xpaths.csv")
   
@@ -376,12 +387,7 @@ parse_biocase_archive <- function(filename,
   oldcolnames = colnames(resu) %>%
     tibble(oldnames = .)
   
-  tsvpath = list.files(paste0("../../data/sssom/",
-                              config$app$standard,
-                              "/",
-                              config$app$discipline),
-                       pattern = "*.tsv",
-                       full.names = T)
+  tsvpath = sssom_path("tsv",config)
   
   sssom = fread(tsvpath)
   

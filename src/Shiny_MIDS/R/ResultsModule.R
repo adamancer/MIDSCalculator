@@ -456,11 +456,7 @@ ResultsServer <- function(id, parent.session, gbiffile,
       output[[paste0("Used_MIDS_implementation", input$start)]] <-
         renderText(
             return(paste0("sssom: ",
-                          config$app$standard,
-                          "[",
-                          config$app$format,
-                          "] - ",
-                          config$app$discipline))
+                          config$app$sssom_id))
         )
     )
 
