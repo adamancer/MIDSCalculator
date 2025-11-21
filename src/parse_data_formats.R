@@ -13,14 +13,14 @@ parse_data_file <- function(filename,
   }
   
   # Simple Darwin Core csv file
-  if (config$app$format == "simple_dwc") {
+  if (config$app$format == "dwc-simple") {
     return(parse_dwc(filename,
                      select_props,
                      uom))
   }
   
   # ABCD zipped XMLs TBD
-  if (config$app$format == "biocase") {
+  if (config$app$format == "abcd") {
     return(parse_biocase_archive(filename,
                                  config,
                                  select_props,
@@ -28,7 +28,7 @@ parse_data_file <- function(filename,
                                  session))
   }
   
-  if (config$app$format == "minext") {
+  if (config$app$format == "dwc-minext") {
     return(parse_minext_zip(filename,
                             config,
                             select_props,
