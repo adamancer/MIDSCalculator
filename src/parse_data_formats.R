@@ -40,7 +40,7 @@ parse_minext_zip <- function(filename,
                              config,
                              select_props,
                              uom) {
-  
+ 
 }
 
 # Function to read parts of a data file of a dwc archive
@@ -182,10 +182,18 @@ read_data_from_dwca_file <- function(filename, #path to the zip file
   
   #collapse multiple values per coreid in extensions
   if (!is.null(extension)) {
+    # core_data %<>%
+    #   summarise(
+    #     across(everything(), 
+    #            ~ { i <- match(TRUE, !is.na(.x), nomatch = NA_integer_); .x[i] }),
+    #     .by = all_of("id")
+    #   )
     core_data %<>%
       summarise(
-        across(everything(), 
-               ~ { i <- match(TRUE, !is.na(.x), nomatch = NA_integer_); .x[i] }),
+        across(
+          everything(),
+          ~ if (any(is.na(.x))) NA else .x[match(TRUE, !is.na(.x))]
+        ),
         .by = all_of("id")
       )
   }

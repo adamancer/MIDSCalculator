@@ -7,6 +7,8 @@ curie_map:
   semapv: https://w3id.org/semapv/vocab/
   skos: http://www.w3.org/2004/02/skos/core#
   sssom: https://w3id.org/sssom/
+  minext: https://github.com/tdwg/mineralogy
+  chrono: https://github.com/tdwg/chrono
 mapping_set_id: mids_dwc-minext_geology_1
 mapping_set_version: 1
 mapping_set_title: MIDS SSSOM mappings for Darwin Core with Mineralogy extension in the Geology domain
