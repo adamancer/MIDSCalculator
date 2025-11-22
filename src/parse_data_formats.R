@@ -40,7 +40,97 @@ parse_minext_zip <- function(filename,
                              config,
                              select_props,
                              uom) {
- 
+  # list of csv files in the zipped archive
+  zipped_files = unzip(filename,list = T)
+  
+  # filename of the "core" file - the Compound Specimens
+  # based on name prefix
+  core_filename = zipped_files %>%
+    filter(grepl("minext_compound_specimens_",Name)) %>%
+    pull(1)
+  
+  # filename of the "extension" file - the constituent parts
+  # based on name prefix
+  extension_filename = zipped_files %>%
+    filter(grepl("minext_constituent_parts_",Name)) %>%
+    pull(1)
+  
+  # read the core data
+  # note the hardcoded csv encoding data
+  core_data <- fread(unzip(filename, 
+                           core_filename), 
+                     encoding = "UTF-8", 
+                     sep = ",",
+                     na.strings = uom, 
+                     quote = "\"",
+                     colClasses = "character")
+  #delete the unzipped file after reading it
+  file.remove(core_filename)
+
+  # the two used categories are hardcoded right now
+  # this is the core category as it's listed in the SSSOM mappings
+  category = "[minext:CompoundSpecimens]"
+  
+  # filter the properties of the core and remove the category namespace
+  core_select_props = select_props %>%
+    tibble(data = .) %>%
+    filter(grepl(category,data,fixed=T)) %>%
+    mutate(data = gsub(category,"",data,fixed=T)) %>%
+    filter(data%in%colnames(core_data)) %>%
+    pull(data)
+  
+  core_data %<>%
+    select(all_of(core_select_props))
+  
+  # same for the extension data
+  extension_data <- fread(unzip(filename, 
+                           extension_filename), 
+                     encoding = "UTF-8", 
+                     sep = ",",
+                     na.strings = uom, 
+                     quote = "\"",
+                     colClasses = "character")
+  #delete the unzipped file after reading it
+  file.remove(extension_filename)
+  
+  extension_category = "[minext:ConstituentParts]"
+  # filter the properties of the core or extension
+  extension_select_props = select_props %>%
+    tibble(data = .) %>%
+    filter(grepl(extension_category,data,fixed=T)) %>%
+    mutate(data = gsub(extension_category,"",data,fixed=T)) %>%
+    filter(data%in%colnames(extension_data)) %>%
+    pull(data) %>%
+    c("dwc:materialEntityID")
+  
+  extension_data %<>%
+    select(all_of(extension_select_props))
+  
+  #collapse multiple values per coreid in extensions
+  # this means that for the mapped properties with multiple rows in the 
+  # extension, all rows need to be populated or they get summarized as NA (empty)
+  ### note that rstudio trips over the anonymous function's syntax, but that's just
+  ### the linter: the code does run
+  extension_data %<>%
+    summarise(
+      across(
+        everything(),
+        ~ if (any(is.na(.x))) NA else .x[match(TRUE, !is.na(.x))]
+      ),
+      .by = all_of("dwc:materialEntityID")
+    )
+  
+  # readd the categories, as they're important for the calculation step after this
+  colnames(extension_data) = paste0(extension_category,
+                                    colnames(extension_data))
+  colnames(core_data) = paste0(category,
+                               colnames(core_data))
+  # join both data files
+  core_data %<>%
+    left_join(extension_data,
+              by=c("[minext:CompoundSpecimens]dwc:materialEntityID"="[minext:ConstituentParts]dwc:materialEntityID"))
+  
+  return(core_data)
 }
 
 # Function to read parts of a data file of a dwc archive

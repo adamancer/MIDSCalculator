@@ -17,22 +17,24 @@ read_json_unknownOrMissing <- function(schema = default_schema, type = "file",co
   list_UoM <- list()
   #Loop trough the values
   n_values <- length(schema$unknownOrMissing)
-  for (l in 1:n_values) {
-    value = schema$unknownOrMissing[[l]]$value[[1]]
-    #only take into account values which do not count for mids
-    if (schema$unknownOrMissing[[l]]$midsAchieved == FALSE) {
-      #check if there is a property, otherwise it relates to all properties
-      if ("property" %in% names(schema$unknownOrMissing[[l]])){
-        prop <- schema$unknownOrMissing[[l]]$property[[1]]
-      } else {
-        prop <- "all"
-      }
-      #add to list
-      if (prop %in% names(list_UoM)){
-        list_UoM[[prop]] <- append(list_UoM[[prop]], value)
-      } else {
-        list_UoM[[prop]] <- value
+  if (n_values > 0) {
+    for (l in 1:n_values) {
+      value = schema$unknownOrMissing[[l]]$value[[1]]
+      #only take into account values which do not count for mids
+      if (schema$unknownOrMissing[[l]]$midsAchieved == FALSE) {
+        #check if there is a property, otherwise it relates to all properties
+        if ("property" %in% names(schema$unknownOrMissing[[l]])){
+          prop <- schema$unknownOrMissing[[l]]$property[[1]]
+        } else {
+          prop <- "all"
         }
+        #add to list
+        if (prop %in% names(list_UoM)){
+          list_UoM[[prop]] <- append(list_UoM[[prop]], value)
+        } else {
+          list_UoM[[prop]] <- value
+        }
+      }
     }
   }
   return(list_UoM)
@@ -150,9 +152,9 @@ parse_sssom <- function(config,localpath=F) {
   newschema$schemaVersion = yml$mapping_set_version
   newschema$date = yml$mapping_date
   newschema$schemaType = "SSSOM-converted"
-  
   #unknownOrMissing section based on RegexRemoval
-  if (!is.null(tsv$`semapv:RegexRemoval`)) {
+  col_check = tsv[["semapv:RegexRemoval"]]
+  if (!is.null(col_check) && any(nzchar(col_check))) {
     #split the |-separated values to exclude
     #data.table syntax
     unknown_or_missing <- tsv[, .(object_id = `sssom:object_id`,
@@ -160,7 +162,6 @@ parse_sssom <- function(config,localpath=F) {
                                   RegexRemoval = unlist(tstrsplit(`semapv:RegexRemoval`, 
                                                                   "\\|"))), 
                               by = .(`sssom:object_id`,`sssom:object_category`)]
-    
     #list unique values to be excluded
     check_all = count(unknown_or_missing,RegexRemoval) %>%
       filter(!is.na(RegexRemoval))

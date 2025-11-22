@@ -56,11 +56,13 @@ calculate_mids <- function(gbiffile,
   gbif_dataset[, missing] <- as.character(NA)
   
   # change unknown or missing values for specific columns to NA
-  for (i in 1:length(list_UoM)){
-    colname <- names(list_UoM[i])
-    if (colname %in% names(gbif_dataset)){
-      gbif_dataset %<>%
-        mutate("{colname}" := na_if(gbif_dataset[[colname]], list_UoM[[i]]))
+  if (length(list_UoM) > 0) {
+    for (i in 1:length(list_UoM)){
+      colname <- names(list_UoM[i])
+      if (colname %in% names(gbif_dataset)){
+        gbif_dataset %<>%
+          mutate("{colname}" := na_if(gbif_dataset[[colname]], list_UoM[[i]]))
+      }
     }
   }
   
