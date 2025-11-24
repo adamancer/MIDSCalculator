@@ -12,6 +12,15 @@ supported_standards = names(yml_data)
 source(file = "../parse_data_formats.R")
 source(file = "../MIDS-calc.R")
 
+sssom_map <- c(
+  mapping_set_title     = "Title",
+  mapping_set_description = "Description",
+  object_type = "Standard and Format",
+  subject_type = "Domain",
+  mapping_date      = "Mapping Date",
+  mapping_set_id = "Mapping ID"
+)
+
 # Increase upload limit to 5GB
 options(shiny.maxRequestSize = as.numeric(config$app$max_size)*1024^2)
 
@@ -78,9 +87,9 @@ ui <-
                         label = "Select mappings:",
                         choices = supported_standards,
                         selected = config$app$sssom_id),
+            htmlOutput("sssom_meta")
             #InteractiveSchemaUI("interactive"),
             ))),
-            br(),br(),
             ResultsUI("start"),
             align="center")
             )
@@ -95,9 +104,56 @@ server <- function(input, output, session) {
     })
   }
   
+  list_to_html <- function(x,name_map = NULL) {
+    stopifnot(is.list(x), !is.null(names(x)))
+    
+    if (!is.null(name_map)) {
+      stopifnot(is.character(name_map), !is.null(names(name_map)))
+      
+      # Only keep elements that both exist in x and in the map
+      mapped_names <- intersect(names(name_map), names(x))
+      
+      # Reorder x according to the mapping
+      x <- x[mapped_names]
+      
+      # Human-readable labels in the same order
+      labels <- unname(name_map[mapped_names])
+    } else {
+      mapped_names = names(x)
+      
+      cm_id = grep("curie_map|object_preprocessing|license",mapped_names)
+      x = x[-cm_id] 
+      mapped_names = mapped_names[-cm_id]
+      
+      labels = mapped_names
+    }
+    
+    # Build one <p>...</p> per element
+    item_html <- mapply(
+      FUN = function(nm, val) {
+        val_str <- paste(as.character(val), collapse = ", ")
+        sprintf("<p align=\"left\"><strong>%s:</strong> %s</p>", nm, val_str)
+      },
+      nm   = labels,
+      val  = x,
+      SIMPLIFY = TRUE,
+      USE.NAMES = FALSE
+    )
+    
+    # Collapse into a single HTML string
+    paste(item_html, collapse = "\n")
+  }
+  
   observeEvent(input$standard_select, {
     config_live = getConfig()
     session$userData$config = config_live
+    
+    formatted_metadata = yml_data[[input$standard_select]] %>%
+      list_to_html(name_map = sssom_map)
+      
+    output$sssom_meta <- renderUI({
+      HTML(formatted_metadata)
+    })
   })
   
 # Define reactive and update format type
