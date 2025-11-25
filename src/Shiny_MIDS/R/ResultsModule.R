@@ -104,9 +104,12 @@ ResultsServer <- function(id, parent.session, gbiffile,
     
     #Initialize filters when new analysis is started
     observeEvent(input$start, {
+      
+      # isolate the results:
+      isolated_results = gbif_dataset_mids()$results
       #update rank filter to ranks that are in dataset + reset rank filter when new dataset is provided
       ranks <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Subfamily", "Genus")
-      subset_terms = colnames(gbif_dataset_mids()$results) %>%
+      subset_terms = colnames(isolated_results) %>%
         gsub(".*:","",.)
       ranksInDataset <- ranks[tolower(ranks) %in% subset_terms]
       updateSelectInput(parent.session, ns(paste0("rank", input$start)),
@@ -115,7 +118,7 @@ ResultsServer <- function(id, parent.session, gbiffile,
       #update country filter with countries from the dataset
       country_pattern = "countryCode" %>%
         paste0(":",.,"$")
-      data_colnames = colnames(gbif_dataset_mids()$results)
+      data_colnames = colnames(isolated_results)
       matching_colid = grep(country_pattern,
                             data_colnames)
       matching_colname = data_colnames[matching_colid]
@@ -123,26 +126,32 @@ ResultsServer <- function(id, parent.session, gbiffile,
         updateSelectInput(parent.session, ns(paste0("country", input$start)), label = "Filter on countrycode",
                           choices = sort(unique(gbif_dataset_mids()$results[[matching_colname]])))
       }
-      #update date filter with dates from the dataset
-      if (!all(is.na(gbif_dataset_mids()$results$eventDate)) &&
-          ! class(gbif_dataset_mids()$results$eventDate) == "character"){
-        updateSliderInput(parent.session, ns(paste0("date", input$start)), label = "Filter on collection date",
-                        min = min(gbif_dataset_mids()$results$eventDate, na.rm = TRUE),
-                        max = max(gbif_dataset_mids()$results$eventDate, na.rm = TRUE),
-                        value = c(min(gbif_dataset_mids()$results$eventDate, na.rm = TRUE),
-                                  max(gbif_dataset_mids()$results$eventDate, na.rm = TRUE)),
-                        timeFormat = "%m/%d/%Y")
-      } 
+      # #update date filter with dates from the dataset
+      # date_pattern = "eventDate" %>%
+      #   paste0(":",.,"$")
+      # matching_colid = grep(date_pattern,
+      #                       data_colnames)
+      # matching_colname = data_colnames[matching_colid]
+      # if (length(matching_colname) > 0 && 
+      #     !all(is.na(isolated_results[[matching_colname]]))){# &&
+      #     #! class(isolated_results[[matching_colname]]) == "character"){
+      #   updateSliderInput(parent.session, ns(paste0("date", input$start)), label = "Filter on collection date",
+      #                   min = min(isolated_results[[matching_colname]], na.rm = TRUE),
+      #                   max = max(isolated_results[[matching_colname]], na.rm = TRUE),
+      #                   value = c(min(isolated_results[[matching_colname]], na.rm = TRUE),
+      #                             max(isolated_results[[matching_colname]], na.rm = TRUE)),
+      #                   timeFormat = "%m/%d/%Y")
+      # } 
     })
     
     #Don't show filters if the needed values are not in the dataset
     observeEvent(resulttabnr(),{
-      if (all(is.na(allmidscalc$prev_bins[[paste0("res", resulttabnr())]]$eventDate))
-          || class(allmidscalc$prev_bins[[paste0("res", resulttabnr())]]$eventDate) == "character"){
-        shinyjs::hide(paste0("date", resulttabnr()))
-      } else {
-        shinyjs::show(paste0("date", resulttabnr()))
-      }
+      # if (all(is.na(allmidscalc$prev_bins[[paste0("res", resulttabnr())]][[get_full_colname("eventDate",resulttabnr(),F)]]))
+      #     ){#|| class(allmidscalc$prev_bins[[paste0("res", resulttabnr())]][[get_full_colname("eventDate",resulttabnr(),F)]]) == "character"){
+      #   shinyjs::hide(paste0("date", resulttabnr()))
+      # } else {
+      #   shinyjs::show(paste0("date", resulttabnr()))
+      # }
       if (all(is.na(allmidscalc$prev_bins[[paste0("res", resulttabnr())]][[get_full_colname("countryCode",resulttabnr(),F)]]))){
         shinyjs::hide(paste0("country", resulttabnr()))
       } else {
@@ -175,10 +184,10 @@ ResultsServer <- function(id, parent.session, gbiffile,
       req(allmidscalc$prev_bins[[paste0("res", resulttabnr())]]) %>%
         {if (!is.null(input[[paste0("country", resulttabnr())]])) {
           filter(., .data[[get_full_colname("countryCode",resulttabnr(),F)]] %in% input[[paste0("country", resulttabnr())]])} else {.}} %>%
-        {if (req(input[[paste0("date", resulttabnr())]][1]) != 0) {
-          filter(., eventDate >= input[[paste0("date", resulttabnr())]][1])} else {.}} %>%
-        {if (req(input[[paste0("date", resulttabnr())]][2]) != 100) {
-          filter(., eventDate <= input[[paste0("date", resulttabnr())]][2])} else {.}} %>%
+        # {if (req(input[[paste0("date", resulttabnr())]][1]) != 0) {
+        #   filter(., .data[[get_full_colname("eventDate",resulttabnr(),F)]] >= input[[paste0("date", resulttabnr())]][1])} else {.}} %>%
+        # {if (req(input[[paste0("date", resulttabnr())]][2]) != 100) {
+        #   filter(., .data[[get_full_colname("eventDate",resulttabnr(),F)]] <= input[[paste0("date", resulttabnr())]][2])} else {.}} %>%
         {if (input[[paste0("rank", resulttabnr())]] != "None" && !is.null(input[[paste0("taxonomy", resulttabnr())]])){
           filter(., .data[[get_full_colname("rank",resulttabnr())]] %in% input[[paste0("taxonomy", resulttabnr())]])} else {.}}
     })
@@ -287,9 +296,9 @@ ResultsServer <- function(id, parent.session, gbiffile,
              actionButton(ns(paste0("missing_terms", 
                                     input$start)),
                           "Show Unused mappings"),
-             sliderInput(ns(paste0("date", input$start)),
-                         label = "Filter on collection date:",
-                         min = 0, max = 100, value = c(0, 100)),
+             # sliderInput(ns(paste0("date", input$start)),
+             #             label = "Filter on collection date:",
+             #             min = 0, max = 100, value = c(0, 100)),
              selectizeInput(ns(paste0("country", input$start)), 
                             label = "Filter on countrycode",  
                             choices = "Nothing yet",
