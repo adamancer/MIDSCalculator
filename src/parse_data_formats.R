@@ -9,14 +9,16 @@ parse_data_file <- function(filename,
     return(parse_dwc_archive(filename,
                              config,
                              select_props,
-                             uom))
+                             uom,
+                             session))
   }
   
   # Simple Darwin Core csv file
   if (config$app$format == "dwc-simple") {
     return(parse_dwc(filename,
                      select_props,
-                     uom))
+                     uom,
+                     session))
   }
   
   # ABCD zipped XMLs TBD
@@ -32,14 +34,16 @@ parse_data_file <- function(filename,
     return(parse_minext_zip(filename,
                             config,
                             select_props,
-                            uom))
+                            uom,
+                            session))
   }
 }
 
 parse_minext_zip <- function(filename,
                              config,
                              select_props,
-                             uom) {
+                             uom,
+                             session = NULL) {
   # list of csv files in the zipped archive
   zipped_files = unzip(filename,list = T)
   
@@ -54,6 +58,12 @@ parse_minext_zip <- function(filename,
   extension_filename = zipped_files %>%
     filter(grepl("minext_constituent_parts_",Name)) %>%
     pull(1)
+  
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Processing Compound Specimen core file.", 
+      session = session)
+  }
   
   # read the core data
   # note the hardcoded csv encoding data
@@ -81,6 +91,12 @@ parse_minext_zip <- function(filename,
   
   core_data %<>%
     select(all_of(core_select_props))
+  
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Processing Constituent Parts extension file.", 
+      session = session)
+  }
   
   # same for the extension data
   extension_data <- fread(unzip(filename, 
@@ -139,7 +155,8 @@ read_data_from_dwca_file <- function(filename, #path to the zip file
                                      namespaces, #namespaces read from yml
                                      select_props, #props to import, derived from schema
                                      uom, #unknown/missing values for all props
-                                     extension = NULL) { #the extension category
+                                     extension = NULL, #the extension category
+                                     session = NULL) { 
   # xpath to the core or extension node
   if (!is.null(extension)) {
     xpath = paste0("//extension[@rowType='",
@@ -295,8 +312,14 @@ read_data_from_dwca_file <- function(filename, #path to the zip file
 parse_dwc_archive <- function(filename,
                               config,
                               select_props,
-                              uom) {
+                              uom,
+                              session = NULL) {
   source(file = "../parse_json_schema.R")
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Reading DwC-A meta.xml.", 
+      session = session)
+  }
   # read the meta.xml and strip the namespace for easier xpath
   meta = read_xml(unzip(filename,"meta.xml"))
   meta %>% xml_ns_strip()
@@ -309,12 +332,18 @@ parse_dwc_archive <- function(filename,
     pluck("curie_map") %>%
     enframe(name="name",value="uri")
   
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Reading DwC-A occurrence core file.", 
+      session = session)
+  }
   # read the data from the occurrence core
   data = read_data_from_dwca_file(filename = filename,
                                   meta = meta,
                                   namespaces = namespaces,
                                   select_props = select_props,
-                                  uom = uom)
+                                  uom = uom,
+                                  session = session)
   
   # define the id on which to join with any extensions
   # +1 because xml indexing starts at 0, R at 1
@@ -334,12 +363,20 @@ parse_dwc_archive <- function(filename,
     len = node %>% xml_length()
     extension_type = node %>% xml_attr("rowType")
     if (len > 0 && extension_type != "http://rs.tdwg.org/dwc/terms/Occurrence") {
+      if (exists("session")&!is.null(session)) {
+        update_modal_spinner(
+          paste0("Calculating MIDS results: Reading DwC-A ",
+                 extension_type,
+                 " extension file."), 
+          session = session)
+      }
       temp_data = read_data_from_dwca_file(filename = filename,
                                            meta = meta,
                                            namespaces = namespaces,
                                            select_props = select_props,
                                            uom = uom,
-                                           extension = extension_type)
+                                           extension = extension_type,
+                                           session = session)
       if (!is.null(temp_data)) {
         extension_id = node %>%
           xml_find_all("//id") %>%
@@ -359,7 +396,14 @@ parse_dwc_archive <- function(filename,
 
 parse_dwc <- function(filename,
                       select_props,
-                      uom) {
+                      uom,
+                      session = NULL) {
+  
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Reading simple occurrence file.", 
+      session = session)
+  }
   
   gbif_dataset <- fread(filename, 
                         encoding = "UTF-8", 
@@ -373,7 +417,7 @@ parse_biocase_archive <- function(filename,
                                   config,
                                   select_props,
                                   uom,
-                                  session) {
+                                  session = NULL) {
   source(file = "../parse_json_schema.R")
   # Read the lookup table from abcd term URI to its xpath
   xpath_mapper = fread("../../data/formats/abcd_xpaths.csv")
@@ -419,7 +463,7 @@ parse_biocase_archive <- function(filename,
     newdf = tibble(`abcd:UnitGUID` = guids)
     if (exists("session")&!is.null(session)) {
       update_modal_spinner(
-        paste0("Calculating MIDS results: ",
+        paste0("Calculating MIDS results: Processing ",
                i,
                " out of ",
                length(filelist),
