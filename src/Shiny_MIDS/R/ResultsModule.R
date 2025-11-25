@@ -332,9 +332,9 @@ ResultsServer <- function(id, parent.session, gbiffile,
                         fluidRow(
                         column(10,
                         verbatimTextOutput(ns(paste0("Used_MIDS_implementation", input$start)))
-                        )#,
-                        #column(2,
-                        #       ViewImplementationUI(ns(paste0("showschema", input$start))))
+                        ),
+                        column(2,
+                               ViewImplementationUI(ns(paste0("showschema", input$start))))
                         ),
                         class = "well"
                   )
@@ -396,7 +396,8 @@ ResultsServer <- function(id, parent.session, gbiffile,
             DT::dataTableOutput(ns("detailTable")),
             DT::dataTableOutput(ns("detailTable2")))),
         easyClose = TRUE,
-        footer = NULL
+        footer = NULL,
+        size = "l"
       ))
       crit <- find_name(jsonschema(), groupName)
       crit_props <- strsplit(substr(crit, 2, nchar(crit)-1), "\\|")
@@ -504,7 +505,7 @@ ResultsServer <- function(id, parent.session, gbiffile,
 
     #show complete MIDS implementation schema in modal window
     observe(
-      ViewImplementationServer(paste0("showschema", resulttabnr()),
+      ViewImplementationServer(paste0("showschema", resulttabnr()),session,
          reactive(allschemas$prev_bins[[paste0("res", resulttabnr())]])
       ))
     

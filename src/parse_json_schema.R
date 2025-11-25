@@ -180,10 +180,10 @@ parse_sssom <- function(config,localpath=F) {
                        object_id,
                        object_category),
                 by=c("RegexRemoval"="RegexRemoval")) %>%
-      filter(!duplicated(object_id)) %>%
-      mutate(object_id = paste0("[",object_category,"]",object_id)) %>%
-      select(-object_category)
-      #mutate(object_id = sub(".*:","",object_id))
+      mutate(test = paste0(object_id,RegexRemoval),
+             object_id = paste0("[",object_category,"]",object_id)) %>%
+      filter(!duplicated(test)) %>%
+      select(-object_category,-test)
     
     #inititate unknownOrMissing section
     newschema$unknownOrMissing = list()

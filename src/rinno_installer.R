@@ -1,5 +1,9 @@
 library(RInno)
 library(ini)
+library(rmarkdown)
+
+# re-render the md doc as a html page
+render("help/howtouse.md", output_dir = "src/Shiny_MIDS/www")
 
 config = read.ini("config.ini")
 

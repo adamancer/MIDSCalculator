@@ -140,6 +140,7 @@ ViewImplementationServer <- function(id,parent.session,schema) {
              htmlOutput(ns("jsonUoM")),
              easyClose = TRUE,
              footer = NULL,
+             size = "l",
              class = "implementation_modal"
            ))}, 
         ignoreInit = TRUE)
