@@ -68,15 +68,18 @@ ViewImplementationServer <- function(id,parent.session,schema) {
         print(HTML(paste0("<div style='background-color: #EEF0F2; box-shadow: 0px 2.5px 5px 0px rgba(0, 0, 0, 0.5); 
                           grid-column: ", column, "; grid-row:", row, "'>")))
         #MIDS levels
-        print(HTML("<div class=", ns('midslevel')))
+        print(HTML("<div class=", ns('midslevel'),">"))
         print(h3(gsub("mids", "Level ", names(schema()$criteria)[[n_level]])))
         print(HTML("</div>"))
         #MIDS elements
         mids_el <- schema()$criteria[[n_level]]
         for(n_element in seq_along(mids_el)){
-          print(HTML("<div class=", ns('midselement'))) 
+          print(HTML("<div class=", ns('midselement'),">",
+                     paste0("<a href=\"https://tdwg.github.io/mids/information-elements/index.html#",
+                     names(mids_el)[[n_element]],
+                     "\" target=\"_blank\">"))) 
           print(h4(names(mids_el)[[n_element]]))
-          print(HTML("</div>"))
+          print(HTML("</a></div>"))
           #MIDS mappings
           mids_mapping <- mids_el[[n_element]]
           for (n_map in seq_along(mids_mapping)){
