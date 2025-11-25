@@ -56,11 +56,13 @@ calculate_mids <- function(gbiffile,
   gbif_dataset[, missing] <- as.character(NA)
   
   # change unknown or missing values for specific columns to NA
-  for (i in 1:length(list_UoM)){
-    colname <- names(list_UoM[i])
-    if (colname %in% names(gbif_dataset)){
-      gbif_dataset %<>%
-        mutate("{colname}" := na_if(gbif_dataset[[colname]], list_UoM[[i]]))
+  if (length(list_UoM) > 0) {
+    for (i in 1:length(list_UoM)){
+      colname <- names(list_UoM[i])
+      if (colname %in% names(gbif_dataset)){
+        gbif_dataset %<>%
+          mutate("{colname}" := na_if(gbif_dataset[[colname]], list_UoM[[i]]))
+      }
     }
   }
   
@@ -76,11 +78,16 @@ calculate_mids <- function(gbiffile,
   else if (jsontype == "list"){
     list_criteria <- jsonlist[["criteria"]]
   }
-  
   # Check if separate MIDS conditions are met -------------------------------
   
   #For each MIDS condition in the list, check if the criteria for that condition 
   #are TRUE or FALSE and add the results in a new column
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Evaluating each term mapped to an information element.", 
+      session = session)
+  }
+  
   for (j in 1:length(list_criteria)){
     midslevel <- names(list_criteria[j])
     midscrit <- list_criteria[[j]]
@@ -92,7 +99,11 @@ calculate_mids <- function(gbiffile,
   }
   
   # Calculate MIDS level ----------------------------------------------------
-  
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Calculating MIDS level per specimen.", 
+      session = session)
+  }
   #For each MIDS level, the conditions of that level and of lower levels all need to be true
   gbif_dataset_mids %<>%
     mutate(MIDS_level = case_when(

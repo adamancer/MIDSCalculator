@@ -9,24 +9,144 @@ parse_data_file <- function(filename,
     return(parse_dwc_archive(filename,
                              config,
                              select_props,
-                             uom))
+                             uom,
+                             session))
   }
   
   # Simple Darwin Core csv file
-  if (config$app$format == "simple_dwc") {
+  if (config$app$format == "dwc-simple") {
     return(parse_dwc(filename,
                      select_props,
-                     uom))
+                     uom,
+                     session))
   }
   
   # ABCD zipped XMLs TBD
-  if (config$app$format == "biocase") {
+  if (config$app$format == "abcd") {
     return(parse_biocase_archive(filename,
                                  config,
                                  select_props,
                                  uom,
                                  session))
   }
+  
+  if (config$app$format == "dwc-minext") {
+    return(parse_minext_zip(filename,
+                            config,
+                            select_props,
+                            uom,
+                            session))
+  }
+}
+
+parse_minext_zip <- function(filename,
+                             config,
+                             select_props,
+                             uom,
+                             session = NULL) {
+  # list of csv files in the zipped archive
+  zipped_files = unzip(filename,list = T)
+  
+  # filename of the "core" file - the Compound Specimens
+  # based on name prefix
+  core_filename = zipped_files %>%
+    filter(grepl("minext_compound_specimens_",Name)) %>%
+    pull(1)
+  
+  # filename of the "extension" file - the constituent parts
+  # based on name prefix
+  extension_filename = zipped_files %>%
+    filter(grepl("minext_constituent_parts_",Name)) %>%
+    pull(1)
+  
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Processing Compound Specimen core file.", 
+      session = session)
+  }
+  
+  # read the core data
+  # note the hardcoded csv encoding data
+  core_data <- fread(unzip(filename, 
+                           core_filename), 
+                     encoding = "UTF-8", 
+                     sep = ",",
+                     na.strings = uom, 
+                     quote = "\"",
+                     colClasses = "character")
+  #delete the unzipped file after reading it
+  file.remove(core_filename)
+
+  # the two used categories are hardcoded right now
+  # this is the core category as it's listed in the SSSOM mappings
+  category = "[minext:CompoundSpecimens]"
+  
+  # filter the properties of the core and remove the category namespace
+  core_select_props = select_props %>%
+    tibble(data = .) %>%
+    filter(grepl(category,data,fixed=T)) %>%
+    mutate(data = gsub(category,"",data,fixed=T)) %>%
+    filter(data%in%colnames(core_data)) %>%
+    pull(data)
+  
+  core_data %<>%
+    select(all_of(core_select_props))
+  
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Processing Constituent Parts extension file.", 
+      session = session)
+  }
+  
+  # same for the extension data
+  extension_data <- fread(unzip(filename, 
+                           extension_filename), 
+                     encoding = "UTF-8", 
+                     sep = ",",
+                     na.strings = uom, 
+                     quote = "\"",
+                     colClasses = "character")
+  #delete the unzipped file after reading it
+  file.remove(extension_filename)
+  
+  extension_category = "[minext:ConstituentParts]"
+  # filter the properties of the core or extension
+  extension_select_props = select_props %>%
+    tibble(data = .) %>%
+    filter(grepl(extension_category,data,fixed=T)) %>%
+    mutate(data = gsub(extension_category,"",data,fixed=T)) %>%
+    filter(data%in%colnames(extension_data)) %>%
+    pull(data) %>%
+    c("dwc:materialEntityID")
+  
+  extension_data %<>%
+    select(all_of(extension_select_props))
+  
+  #collapse multiple values per coreid in extensions
+  # this means that for the mapped properties with multiple rows in the 
+  # extension, all rows need to be populated or they get summarized as NA (empty)
+  ### note that rstudio trips over the anonymous function's syntax, but that's just
+  ### the linter: the code does run
+  extension_data %<>%
+    summarise(
+      across(
+        everything(),
+        ~ if (any(is.na(.x))) NA else .x[match(TRUE, !is.na(.x))]
+      ),
+      .by = all_of("dwc:materialEntityID")
+    )
+  
+  # readd the categories, as they're important for the calculation step after this
+  colnames(extension_data) = paste0(extension_category,
+                                    colnames(extension_data))
+  colnames(core_data) = paste0(category,
+                               colnames(core_data))
+  # join both data files
+  core_data %<>%
+    left_join(extension_data,
+              by=c("[minext:CompoundSpecimens]dwc:materialEntityID"="[minext:ConstituentParts]dwc:materialEntityID"))
+  
+  return(core_data)
 }
 
 # Function to read parts of a data file of a dwc archive
@@ -35,7 +155,8 @@ read_data_from_dwca_file <- function(filename, #path to the zip file
                                      namespaces, #namespaces read from yml
                                      select_props, #props to import, derived from schema
                                      uom, #unknown/missing values for all props
-                                     extension = NULL) { #the extension category
+                                     extension = NULL, #the extension category
+                                     session = NULL) { 
   # xpath to the core or extension node
   if (!is.null(extension)) {
     xpath = paste0("//extension[@rowType='",
@@ -168,10 +289,18 @@ read_data_from_dwca_file <- function(filename, #path to the zip file
   
   #collapse multiple values per coreid in extensions
   if (!is.null(extension)) {
+    # core_data %<>%
+    #   summarise(
+    #     across(everything(), 
+    #            ~ { i <- match(TRUE, !is.na(.x), nomatch = NA_integer_); .x[i] }),
+    #     .by = all_of("id")
+    #   )
     core_data %<>%
       summarise(
-        across(everything(), 
-               ~ { i <- match(TRUE, !is.na(.x), nomatch = NA_integer_); .x[i] }),
+        across(
+          everything(),
+          ~ if (any(is.na(.x))) NA else .x[match(TRUE, !is.na(.x))]
+        ),
         .by = all_of("id")
       )
   }
@@ -183,30 +312,38 @@ read_data_from_dwca_file <- function(filename, #path to the zip file
 parse_dwc_archive <- function(filename,
                               config,
                               select_props,
-                              uom) {
+                              uom,
+                              session = NULL) {
+  source(file = "../parse_json_schema.R")
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Reading DwC-A meta.xml.", 
+      session = session)
+  }
   # read the meta.xml and strip the namespace for easier xpath
   meta = read_xml(unzip(filename,"meta.xml"))
   meta %>% xml_ns_strip()
   file.remove("meta.xml")
   # load namespaces of dwc, dc, ac... from the sssom yaml curie map
-  ymlpath = list.files(paste0("../../data/sssom/",
-                              config$app$standard,
-                              "/",
-                              config$app$discipline),
-                       pattern = "*.yml",
-                       full.names = T)
+  ymlpath = sssom_path("yml",config)
   
   namespaces = read_yaml(ymlpath,
                          readLines.warn = F) %>%
     pluck("curie_map") %>%
     enframe(name="name",value="uri")
   
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Reading DwC-A occurrence core file.", 
+      session = session)
+  }
   # read the data from the occurrence core
   data = read_data_from_dwca_file(filename = filename,
                                   meta = meta,
                                   namespaces = namespaces,
                                   select_props = select_props,
-                                  uom = uom)
+                                  uom = uom,
+                                  session = session)
   
   # define the id on which to join with any extensions
   # +1 because xml indexing starts at 0, R at 1
@@ -226,12 +363,20 @@ parse_dwc_archive <- function(filename,
     len = node %>% xml_length()
     extension_type = node %>% xml_attr("rowType")
     if (len > 0 && extension_type != "http://rs.tdwg.org/dwc/terms/Occurrence") {
+      if (exists("session")&!is.null(session)) {
+        update_modal_spinner(
+          paste0("Calculating MIDS results: Reading DwC-A ",
+                 extension_type,
+                 " extension file."), 
+          session = session)
+      }
       temp_data = read_data_from_dwca_file(filename = filename,
                                            meta = meta,
                                            namespaces = namespaces,
                                            select_props = select_props,
                                            uom = uom,
-                                           extension = extension_type)
+                                           extension = extension_type,
+                                           session = session)
       if (!is.null(temp_data)) {
         extension_id = node %>%
           xml_find_all("//id") %>%
@@ -251,7 +396,14 @@ parse_dwc_archive <- function(filename,
 
 parse_dwc <- function(filename,
                       select_props,
-                      uom) {
+                      uom,
+                      session = NULL) {
+  
+  if (exists("session")&!is.null(session)) {
+    update_modal_spinner(
+      "Calculating MIDS results: Reading simple occurrence file.", 
+      session = session)
+  }
   
   gbif_dataset <- fread(filename, 
                         encoding = "UTF-8", 
@@ -265,7 +417,8 @@ parse_biocase_archive <- function(filename,
                                   config,
                                   select_props,
                                   uom,
-                                  session) {
+                                  session = NULL) {
+  source(file = "../parse_json_schema.R")
   # Read the lookup table from abcd term URI to its xpath
   xpath_mapper = fread("../../data/formats/abcd_xpaths.csv")
   
@@ -310,7 +463,7 @@ parse_biocase_archive <- function(filename,
     newdf = tibble(`abcd:UnitGUID` = guids)
     if (exists("session")&!is.null(session)) {
       update_modal_spinner(
-        paste0("Calculating MIDS results: ",
+        paste0("Calculating MIDS results: Processing ",
                i,
                " out of ",
                length(filelist),
@@ -376,12 +529,7 @@ parse_biocase_archive <- function(filename,
   oldcolnames = colnames(resu) %>%
     tibble(oldnames = .)
   
-  tsvpath = list.files(paste0("../../data/sssom/",
-                              config$app$standard,
-                              "/",
-                              config$app$discipline),
-                       pattern = "*.tsv",
-                       full.names = T)
+  tsvpath = sssom_path("tsv",config)
   
   sssom = fread(tsvpath)
   

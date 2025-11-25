@@ -5,28 +5,21 @@ pkgLoad()
 #Load source files
 config = read.ini("../../config.ini")
 
-# Validate vocabulary
-supported_formats = c("dwc-a","simple_dwc")
-supported_standards = list.dirs("../../data/sssom",
-                                recursive = F,
-                                full.names = F)
-supported_disciplines = c("biology")
-
-if (!config$app$format%in%supported_formats) {
-  config$app$format == "dwc-a"
-}
-
-if (!config$app$format%in%supported_standards) {
-  config$app$format == "dwc"
-}
-
-if (!config$app$format%in%supported_disciplines) {
-  config$app$format == "biology"
-}
-
 source(file = "../parse_json_schema.R")
+yml_data = parse_sssom_yml_for_config()
+supported_standards = names(yml_data)
+
 source(file = "../parse_data_formats.R")
 source(file = "../MIDS-calc.R")
+
+sssom_map <- c(
+  mapping_set_title     = "Title",
+  mapping_set_description = "Description",
+  object_type = "Standard and Format",
+  subject_type = "Domain",
+  mapping_date      = "Mapping Date",
+  mapping_set_id = "Mapping ID"
+)
 
 # Increase upload limit to 5GB
 options(shiny.maxRequestSize = as.numeric(config$app$max_size)*1024^2)
@@ -90,21 +83,13 @@ ui <-
             #fileInput("customjsonfile", label = NULL, accept = ".json"),
             hr(style = "border-top: 1px solid #2874A6;"),
             #checkboxInput("editschema", "Edit interactively", value = FALSE),
-            selectInput("discipline_select", 
-                        label = "Select Discipline:",
-                        choices = supported_disciplines,
-                        selected = config$app$discipline),
             selectInput("standard_select", 
-                        label = "Select Standard:",
+                        label = "Select mappings:",
                         choices = supported_standards,
-                        selected = config$app$standard),
-            selectInput("format_select", 
-                        label = "Select Data Format:",
-                        choices = supported_formats,
-                        selected = config$app$format),
+                        selected = config$app$sssom_id),
+            htmlOutput("sssom_meta")
             #InteractiveSchemaUI("interactive"),
             ))),
-            br(),br(),
             ResultsUI("start"),
             align="center")
             )
@@ -119,29 +104,64 @@ server <- function(input, output, session) {
     })
   }
   
-# Define reactive and update format type
-  observeEvent(input$standard_select, {
-    if (input$standard_select == "dwc") {
-      supported_formats = c("dwc-a", "simple-dwc")
-      updateSelectInput(session,"format_select",choices = supported_formats)
-    } else if (input$standard_select == "abcd") {
-      supported_formats = c("biocase")
-      updateSelectInput(session,"format_select",choices = supported_formats)
+  list_to_html <- function(x,name_map = NULL) {
+    stopifnot(is.list(x), !is.null(names(x)))
+    
+    if (!is.null(name_map)) {
+      stopifnot(is.character(name_map), !is.null(names(name_map)))
+      
+      # Only keep elements that both exist in x and in the map
+      mapped_names <- intersect(names(name_map), names(x))
+      
+      # Reorder x according to the mapping
+      x <- x[mapped_names]
+      
+      # Human-readable labels in the same order
+      labels <- unname(name_map[mapped_names])
+    } else {
+      mapped_names = names(x)
+      
+      cm_id = grep("curie_map|object_preprocessing|license",mapped_names)
+      x = x[-cm_id] 
+      mapped_names = mapped_names[-cm_id]
+      
+      labels = mapped_names
     }
     
-    #manually update format in config here as updateSelectInput is asynchronous
+    # Build one <p>...</p> per element
+    item_html <- mapply(
+      FUN = function(nm, val) {
+        val_str <- paste(as.character(val), collapse = ", ")
+        sprintf("<p align=\"left\"><strong>%s:</strong> %s</p>", nm, val_str)
+      },
+      nm   = labels,
+      val  = x,
+      SIMPLIFY = TRUE,
+      USE.NAMES = FALSE
+    )
+    
+    # Collapse into a single HTML string
+    paste(item_html, collapse = "\n")
+  }
+  
+  observeEvent(input$standard_select, {
     config_live = getConfig()
-    config_live$app$format = supported_formats[1]
     session$userData$config = config_live
-    #print(session$userData$config)
+    
+    formatted_metadata = yml_data[[input$standard_select]] %>%
+      list_to_html(name_map = sssom_map)
+      
+    output$sssom_meta <- renderUI({
+      HTML(formatted_metadata)
+    })
   })
   
+# Define reactive and update format type
   getConfig <- reactive({
-    config_live = list(format = input$format_select,
-                       standard = input$standard_select,
-                       discipline = input$discipline_select,
-                       `dwc-a_verbatim` = config$app$`dwc-a_verbatim`)
-    return(list(app = config_live))
+    
+    config_live = parse_sssom_id(input$standard_select,
+                                 config)
+    return(config_live)
   })
 
 # Show information about the app ------------------------------------------
@@ -150,11 +170,10 @@ server <- function(input, output, session) {
     #show modal
     showModal(modalDialog(
       title = "About",
-      HTML(paste0(h4('Submit data'), '
-        On this page a zipped GBIF annotated Darwin Core Archive or a comma or tab separated occurrence file can be uploaded (max 5GB). In addition, the MIDS implementation can be specified and viewed. To specify the MIDS implementation you can either choose the default schema (included in the app) or upload a schema from file. It is also possible to choose to edit this schema interactively. The interactive editing opens in a pop-up window, where in a first tab, MIDS elements can be added, removed, or moved to another MIDS level. In addition, mappings can be removed or added by clicking the "edit" icon of a MIDS element. In a second tab, the Unknown or Missing section of the schema can be edited, i.e. new properties and new values can be added. This interactively edited schema can be saved to file (JSON). The schema (be it default, custom or interactive) can be viewed by clicking the eye icon, which opens a human-friendly visualization of the MIDS schema, so that it is not necessary to read the JSON file to be able to understand the specifics of the MIDS schema used. Once a dataset and a MIDS implementation have been chosen, calculations can be started by clicking "Start MIDS score calculations".
-        ', br(), h4('Results'), '
-        The results of each analysis are visualized on a new page, where it is possible to explore summaries of the results of both MIDS levels and MIDS elements, either as plots or as tables. The MIDS element plot can be clicked to get more details on the results of the mappings of that element. It is also possible to explore the complete records table with the MIDS results for each record, and to download it as a csv file. In addition, the data can be filtered to see how MIDS results change when filtering on properties such as country code /taxonomic group/ collection date. The filename of the dataset is shown, as well as the used MIDS implementation, to make the provenance of the calculations clear.'
-      )),
+      tags$iframe(
+        src   = "howtouse.html",   # relative to /www
+        style = "width:100%;height:600px;border:none;"
+      ),
       easyClose = TRUE,
       footer = tagList(
         modalButton("Cancel")
@@ -267,38 +286,16 @@ server <- function(input, output, session) {
 
   jsonschemafinal <- reactive({
     config_live = getConfig()
-    # if (input$editschema == TRUE){
-    #   # get interactive schema
-    #   return(c(list("criteria" = read_json_mids_criteria(schema = interactiveschema$interactivejson(), outtype = "criteria", type = "interactive")),
-    #            list("UoM" = read_json_unknownOrMissing(schema = interactiveschema$interactivejson(), type = "interactive")),
-    #            list("properties" = read_json_mids_criteria(schema = interactiveschema$interactivejson(), outtype = "properties", type = "interactive"))
-    #           ))
-    # } else {
-    #   #get schema from file
-    #   #get filename
-    #   if (input$jsonfiletype == "custom"){
-    #     filename <- paste("Custom:", input$customjsonfile$name)
-    #   } else if (input$jsonfiletype == "sssom") {
-        return(c(list("criteria" = read_json_mids_criteria(outtype = "criteria",
-                                                           type = "sssom",
-                                                           config = config_live)),
-                 list("UoM" = read_json_unknownOrMissing(type = "sssom",
-                                                         config = config_live)),
-                 list("properties" = read_json_mids_criteria(outtype = "properties",
-                                                             type = "sssom",
-                                                             config = config_live))
-         ))
-    #   } else {
-    #     filename <- paste("Default:",
-    #                       paste0(read_json(jsonpath())$schemaName,
-    #                              " v",
-    #                              read_json(jsonpath())$schemaVersion))
-    #   }
-    #   #return schema
-    #   return(c(list("criteria" = jsonschemafile()), list("UoM" = jsonUoMfile()),
-    #     list("properties" = read_json_mids_criteria(schema = jsonpath(), out = "properties")),
-    #     list("filename"= filename)))
-    # }
+
+    resp = c(list("criteria" = read_json_mids_criteria(outtype = "criteria",
+                                                      type = "sssom",
+                                                      config = config_live)),
+            list("UoM" = read_json_unknownOrMissing(type = "sssom",
+                                                    config = config_live)),
+            list("properties" = read_json_mids_criteria(outtype = "properties",
+                                                        type = "sssom",
+                                                        config = config_live))) 
+    return(resp)
   })
   
 # Show current MIDS implementation ----------------------------------------

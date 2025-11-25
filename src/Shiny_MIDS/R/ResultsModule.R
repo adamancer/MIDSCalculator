@@ -51,16 +51,21 @@ ResultsServer <- function(id, parent.session, gbiffile,
 
     observe({
       if (length(gbif_dataset_mids()$missing) > 0){
-        showModal(modalDialog(
-          title = "Warning",
-          HTML(paste0("The following columns were not found in the dataset. ",
-                      "These columns are regarded as NA for all records:",
-                      br(),
-                      paste(gbif_dataset_mids()$missing, collapse= "<br>"))
-          )
-        ))
+        missing_modal(gbif_dataset_mids()$missing)
       }
     })
+    
+    missing_modal <- function(data) {
+      showModal(modalDialog(
+        title = "Warning",
+        HTML(paste0("The following columns were not found in the dataset. ",
+                    "These columns are regarded as NA for all records:",
+                    br(),
+                    paste(data, collapse= "<br>"))
+        ),
+        easyClose = T
+      ))
+    }
     
 # Allow multiple results tabs --------------------------------------------
     
@@ -68,6 +73,12 @@ ResultsServer <- function(id, parent.session, gbiffile,
     allmidscalc <- reactiveValues(prev_bins = NULL)
     observeEvent(input$start, {
       allmidscalc$prev_bins[[paste0("res", input$start)]] <- gbif_dataset_mids()$results
+    })
+    
+    #save all MIDS unmapped term lists
+    allmids_unmapped <- reactiveValues(prev_bins = NULL)
+    observeEvent(input$start, {
+      allmids_unmapped$prev_bins[[paste0("res", input$start)]] <- gbif_dataset_mids()$missing
     })
     
     #save all MIDS implementations
@@ -93,72 +104,111 @@ ResultsServer <- function(id, parent.session, gbiffile,
     
     #Initialize filters when new analysis is started
     observeEvent(input$start, {
+      
+      # isolate the results:
+      isolated_results = gbif_dataset_mids()$results
       #update rank filter to ranks that are in dataset + reset rank filter when new dataset is provided
       ranks <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Subfamily", "Genus")
-      ranksInDataset <- ranks[tolower(ranks) %in% colnames(gbif_dataset_mids()$results)]
+      subset_terms = colnames(isolated_results) %>%
+        gsub(".*:","",.)
+      ranksInDataset <- ranks[tolower(ranks) %in% subset_terms]
       updateSelectInput(parent.session, ns(paste0("rank", input$start)),
                         selected = "None",
                         choices = c("None", ranksInDataset))
       #update country filter with countries from the dataset
-      updateSelectInput(parent.session, ns(paste0("country", input$start)), label = "Filter on countrycode",
-                        choices = sort(unique(gbif_dataset_mids()$results$countryCode)))
-      #update date filter with dates from the dataset
-      if (!all(is.na(gbif_dataset_mids()$results$eventDate)) &&
-          ! class(gbif_dataset_mids()$results$eventDate) == "character"){
-        updateSliderInput(parent.session, ns(paste0("date", input$start)), label = "Filter on collection date",
-                        min = min(gbif_dataset_mids()$results$eventDate, na.rm = TRUE),
-                        max = max(gbif_dataset_mids()$results$eventDate, na.rm = TRUE),
-                        value = c(min(gbif_dataset_mids()$results$eventDate, na.rm = TRUE),
-                                  max(gbif_dataset_mids()$results$eventDate, na.rm = TRUE)),
-                        timeFormat = "%m/%d/%Y")
-      } 
+      country_pattern = "countryCode" %>%
+        paste0(":",.,"$")
+      data_colnames = colnames(isolated_results)
+      matching_colid = grep(country_pattern,
+                            data_colnames)
+      matching_colname = data_colnames[matching_colid]
+      if (length(matching_colname) > 0) {
+        updateSelectInput(parent.session, ns(paste0("country", input$start)), label = "Filter on countrycode",
+                          choices = sort(unique(gbif_dataset_mids()$results[[matching_colname]])))
+      }
+      # #update date filter with dates from the dataset
+      # date_pattern = "eventDate" %>%
+      #   paste0(":",.,"$")
+      # matching_colid = grep(date_pattern,
+      #                       data_colnames)
+      # matching_colname = data_colnames[matching_colid]
+      # if (length(matching_colname) > 0 && 
+      #     !all(is.na(isolated_results[[matching_colname]]))){# &&
+      #     #! class(isolated_results[[matching_colname]]) == "character"){
+      #   updateSliderInput(parent.session, ns(paste0("date", input$start)), label = "Filter on collection date",
+      #                   min = min(isolated_results[[matching_colname]], na.rm = TRUE),
+      #                   max = max(isolated_results[[matching_colname]], na.rm = TRUE),
+      #                   value = c(min(isolated_results[[matching_colname]], na.rm = TRUE),
+      #                             max(isolated_results[[matching_colname]], na.rm = TRUE)),
+      #                   timeFormat = "%m/%d/%Y")
+      # } 
     })
     
     #Don't show filters if the needed values are not in the dataset
     observeEvent(resulttabnr(),{
-      if (all(is.na(allmidscalc$prev_bins[[paste0("res", resulttabnr())]]$eventDate))
-          || class(allmidscalc$prev_bins[[paste0("res", resulttabnr())]]$eventDate) == "character"){
-        shinyjs::hide(paste0("date", resulttabnr()))
+      # if (all(is.na(allmidscalc$prev_bins[[paste0("res", resulttabnr())]][[get_full_colname("eventDate",resulttabnr(),F)]]))
+      #     ){#|| class(allmidscalc$prev_bins[[paste0("res", resulttabnr())]][[get_full_colname("eventDate",resulttabnr(),F)]]) == "character"){
+      #   shinyjs::hide(paste0("date", resulttabnr()))
+      # } else {
+      #   shinyjs::show(paste0("date", resulttabnr()))
+      # }
+      tabnr = resulttabnr()
+      active_result = paste0("res",tabnr)
+      if (all(is.na(allmidscalc$prev_bins[[active_result]][[get_full_colname("countryCode",tabnr,F)]]))){
+        shinyjs::hide(paste0("country", tabnr))
       } else {
-        shinyjs::show(paste0("date", resulttabnr()))
-      }
-      if (all(is.na(allmidscalc$prev_bins[[paste0("res", resulttabnr())]]$countryCode))){
-        shinyjs::hide(paste0("country", resulttabnr()))
-      } else {
-        shinyjs::show(paste0("country", resulttabnr()))
+        shinyjs::show(paste0("country", tabnr))
       }
       ranks <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Subfamily", "Genus")
-      if (is_empty(ranks[tolower(ranks) %in% colnames(allmidscalc$prev_bins[[paste0("res", resulttabnr())]])])){
-        shinyjs::hide(paste0("rank", resulttabnr()))
+      subset_terms = colnames(allmidscalc$prev_bins[[active_result]]) %>%
+        gsub(".*:","",.)
+      if (is_empty(ranks[tolower(ranks) %in% subset_terms])){
+        shinyjs::hide(paste0("rank",tabnr))
       } else {
-        shinyjs::show(paste0("rank", resulttabnr()))
+        shinyjs::show(paste0("rank",tabnr))
       }
     })
     
     
     #update taxonomy filter when a taxonomic rank is chosen
     observeEvent(input[[paste0("rank", resulttabnr())]], {
-      if (input[[paste0("rank", resulttabnr())]] != "None"){
+      tabnr = resulttabnr()
+      if (input[[paste0("rank", tabnr)]] != "None"){
         #update taxonomy filter with values from the dataset
-        updateSelectInput(parent.session, ns(paste0("taxonomy", resulttabnr())), label = "Filter on taxonomy",
-                          choices = sort(unique(req(allmidscalc$prev_bins[[paste0("res", resulttabnr())]])[[tolower(input[[paste0("rank", resulttabnr())]])]])))
+        updateSelectInput(parent.session, ns(paste0("taxonomy", tabnr)), label = "Filter on taxonomy",
+                          choices = sort(unique(req(allmidscalc$prev_bins[[paste0("res", tabnr)]])[[get_full_colname("rank",tabnr)]])))
         #only show taxonomy filter when a rank is chosen
-        shinyjs::show(paste0("taxonomy", resulttabnr()))
-      } else {shinyjs::hide(paste0("taxonomy", resulttabnr()))}
+        shinyjs::show(paste0("taxonomy", tabnr))
+      } else {shinyjs::hide(paste0("taxonomy", tabnr))}
     })
     
     #apply filters if they are set
     gbif_dataset_mids_filtered <- reactive({
-      req(allmidscalc$prev_bins[[paste0("res", resulttabnr())]]) %>%
-        {if (!is.null(input[[paste0("country", resulttabnr())]]) && input[[paste0("country", resulttabnr())]] != "All") {
-          filter(., countryCode %in% input[[paste0("country", resulttabnr())]])} else {.}} %>%
-        {if (req(input[[paste0("date", resulttabnr())]][1]) != 0) {
-          filter(., eventDate >= input[[paste0("date", resulttabnr())]][1])} else {.}} %>%
-        {if (req(input[[paste0("date", resulttabnr())]][2]) != 100) {
-          filter(., eventDate <= input[[paste0("date", resulttabnr())]][2])} else {.}} %>%
-        {if (input[[paste0("rank", resulttabnr())]] != "None" && !is.null(input[[paste0("taxonomy", resulttabnr())]]) && input[[paste0("taxonomy", resulttabnr())]] != "All"){
-          filter(., .data[[tolower(input[[paste0("rank", resulttabnr())]])]] %in% input[[paste0("taxonomy", resulttabnr())]])} else {.}}
+      tabnr = resulttabnr()
+      req(allmidscalc$prev_bins[[paste0("res", tabnr)]]) %>%
+        {if (!is.null(input[[paste0("country", tabnr)]])) {
+          filter(., .data[[get_full_colname("countryCode",tabnr,F)]] %in% input[[paste0("country", tabnr)]])} else {.}} %>%
+        # {if (req(input[[paste0("date", resulttabnr())]][1]) != 0) {
+        #   filter(., .data[[get_full_colname("eventDate",resulttabnr(),F)]] >= input[[paste0("date", resulttabnr())]][1])} else {.}} %>%
+        # {if (req(input[[paste0("date", resulttabnr())]][2]) != 100) {
+        #   filter(., .data[[get_full_colname("eventDate",resulttabnr(),F)]] <= input[[paste0("date", resulttabnr())]][2])} else {.}} %>%
+        {if (input[[paste0("rank", tabnr)]] != "None" && !is.null(input[[paste0("taxonomy", tabnr)]])){
+          filter(., .data[[get_full_colname("rank",tabnr)]] %in% input[[paste0("taxonomy", tabnr)]])} else {.}}
     })
+    
+    # function to add category back to a column
+    # will not work if the same column occurs in multiple categories
+    get_full_colname <- function(name,tabnr,name_is_input = T) {
+      if (name_is_input) {
+        name = tolower(input[[paste0(name, tabnr)]])
+      }
+      chosen_col = name %>%
+        paste0(":",.,"$")
+      data_colnames = colnames(allmidscalc$prev_bins[[paste0("res",tabnr)]])
+      matching_colid = grep(chosen_col,
+                            data_colnames)
+      return(data_colnames[matching_colid])
+    }
     
 # Calculate summarized results --------------------------------------------
     
@@ -240,7 +290,7 @@ ResultsServer <- function(id, parent.session, gbiffile,
     
     #add new tab for each analysis
     observeEvent(input$start, {appendTab(
-       session = parent.session, "tabs", 
+       session = parent.session, "tabs",
        tabPanel(
          title = tags$span(paste0("Results", input$start, "    "),
                           CloseTabUI(ns(paste0("close", input$start)))), 
@@ -248,10 +298,12 @@ ResultsServer <- function(id, parent.session, gbiffile,
          sidebarLayout(
            sidebarPanel(
              helpText("Filter to view MIDS scores for part of the dataset"),
-             #shinyjs::hidden(
-               sliderInput(ns(paste0("date", input$start)),
-                         label = "Filter on collection date:",
-                         min = 0, max = 100, value = c(0, 100)),
+             actionButton(ns(paste0("missing_terms", 
+                                    input$start)),
+                          "Show Unused mappings"),
+             # sliderInput(ns(paste0("date", input$start)),
+             #             label = "Filter on collection date:",
+             #             min = 0, max = 100, value = c(0, 100)),
              selectizeInput(ns(paste0("country", input$start)), 
                             label = "Filter on countrycode",  
                             choices = "Nothing yet",
@@ -269,7 +321,9 @@ ResultsServer <- function(id, parent.session, gbiffile,
             tabsetPanel(type = "tabs",
              tabPanel("Plots",
                       plotOutput(ns(paste0("midsplot_prev", input$start))),
-                      plotOutput(ns(paste0("midscritsplot", input$start)), click = ns(paste0("midscritsplot_click", input$start)), height="auto")),
+                      plotOutput(ns(paste0("midscritsplot", input$start)), 
+                                 click = ns(paste0("midscritsplot_click", input$start)), 
+                                 height="auto")),
              tabPanel("Summary tables", 
                       DT::dataTableOutput(ns(paste0("summary", input$start))), 
                       br(),
@@ -294,9 +348,9 @@ ResultsServer <- function(id, parent.session, gbiffile,
                         fluidRow(
                         column(10,
                         verbatimTextOutput(ns(paste0("Used_MIDS_implementation", input$start)))
-                        )#,
-                        #column(2,
-                        #       ViewImplementationUI(ns(paste0("showschema", input$start))))
+                        ),
+                        column(2,
+                               ViewImplementationUI(ns(paste0("showschema", input$start))))
                         ),
                         class = "well"
                   )
@@ -316,7 +370,31 @@ ResultsServer <- function(id, parent.session, gbiffile,
     output[[paste0("summary", input$start)]] <- 
       DT::renderDataTable(midssum(), rownames = FALSE, options = list(dom = 't'))
     output[[paste0("summarycrit", input$start)]] <- 
-      DT::renderDataTable(midscrit(), rownames = FALSE, options = list(dom = 't', paging = FALSE))
+      DT::renderDataTable(midscrit(), 
+                          rownames = FALSE, 
+                          class = "hover",
+                          selection = "none",
+                          options = list(dom = 't', 
+                                         paging = FALSE,
+                                         rowCallback = JS(
+                                           "function(row, data, displayNum, displayIndex, dataIndex) {",
+                                           "  var links  = ", toJSON(paste0("https://tdwg.github.io/mids/information-elements/index.html#",
+                                                                            midscrit()$MIDS_elements)),  ";",
+                                           "  var idx   = dataIndex;",
+                                           
+                                           #// Tooltip on hover
+                                           "  $('td', row).attr('title', \"Click for more info on this information element on the MIDS website (this will open a new tab).\");",
+                                           
+                                           #// Make cursor a pointer to signal clickability
+                                           "  $(row).css('cursor', 'pointer');",
+                                           
+                                           #// On click: open external link in new tab
+                                           "  $(row).off('click');",  #// avoid duplicate bindings on redraw
+                                           "  $(row).on('click', function() {",
+                                           "    window.open(links[idx], '_blank');",
+                                           "  });",
+                                           "}"
+                          )))
     #render table
     output[[paste0("table", input$start)]] <- 
       DT::renderDataTable(gbif_dataset_mids_filtered())
@@ -349,7 +427,11 @@ ResultsServer <- function(id, parent.session, gbiffile,
       groupId <- round(input[[paste0("midscritsplot_click", resulttabnr())]]$y)
       groupName <- input[[paste0("midscritsplot_click", resulttabnr())]]$domain$discrete_limits$y[[groupId]]
       showModal(modalDialog(
-        title = paste0(groupName, " details"),
+        title = HTML(paste0("<a href=\"https://tdwg.github.io/mids/information-elements/index.html#",
+                       groupName,
+                       "\" target=\"_blank\">",
+                       groupName,
+                       "</a> details")),
         tabsetPanel(type = "tabs",
           tabPanel("Plot",
             plotOutput(ns("detail")),
@@ -358,14 +440,15 @@ ResultsServer <- function(id, parent.session, gbiffile,
             DT::dataTableOutput(ns("detailTable")),
             DT::dataTableOutput(ns("detailTable2")))),
         easyClose = TRUE,
-        footer = NULL
+        footer = NULL,
+        size = "l"
       ))
       crit <- find_name(jsonschema(), groupName)
       crit_props <- strsplit(substr(crit, 2, nchar(crit)-1), "\\|")
       plot <- c()
       plot2 <- c()
       for (i in 1:length(crit_props[[1]])){
-         mapname <- gsub("\\(|\\)|\\!|is.na", "", crit_props[[1]][[i]])
+         mapname <- gsub("\\(|\\)|\\!|is.na|`", "", crit_props[[1]][[i]])
          temp <- gbif_dataset_mids_filtered() %>%
           summarise(test = !!rlang::parse_expr(crit_props[[1]][[i]])) %>%
            filter(test == TRUE) %>% 
@@ -376,7 +459,7 @@ ResultsServer <- function(id, parent.session, gbiffile,
          if (grepl( "\\&", crit_props[[1]][[i]]) == TRUE){
            splitprop <- stringr::str_split(crit_props[[1]][[i]], "\\&")[[1]]
            for (j in seq_along(splitprop)){
-             propname2 <- gsub("\\(|\\)|\\!|is.na", "", splitprop[[j]])
+             propname2 <- gsub("\\(|\\)|\\!|is.na|`", "", splitprop[[j]])
              temp2 <- gbif_dataset_mids_filtered() %>%
                summarise(test = !!rlang::parse_expr(splitprop[[j]])) %>%
                filter(test == TRUE) %>%
@@ -441,7 +524,6 @@ ResultsServer <- function(id, parent.session, gbiffile,
         NULL
       }
     }
-    
 
 # Information on dataset and MIDS implementation used ---------------------
 
@@ -456,17 +538,17 @@ ResultsServer <- function(id, parent.session, gbiffile,
       output[[paste0("Used_MIDS_implementation", input$start)]] <-
         renderText(
             return(paste0("sssom: ",
-                          config$app$standard,
-                          "[",
-                          config$app$format,
-                          "] - ",
-                          config$app$discipline))
+                          config$app$sssom_id))
         )
     )
+    
+    observeEvent(input[[paste0("missing_terms", resulttabnr())]], {
+      missing_modal(allmids_unmapped$prev_bins[[paste0("res", resulttabnr())]])
+    })
 
     #show complete MIDS implementation schema in modal window
     observe(
-      ViewImplementationServer(paste0("showschema", resulttabnr()),
+      ViewImplementationServer(paste0("showschema", resulttabnr()),session,
          reactive(allschemas$prev_bins[[paste0("res", resulttabnr())]])
       ))
     
