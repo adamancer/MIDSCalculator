@@ -37,6 +37,9 @@ read_json_unknownOrMissing <- function(schema = default_schema, type = "file",co
       }
     }
   }
+  if (is.null(list_UoM[["all"]])) {
+    list_UoM[["all"]] = ""
+  }
   return(list_UoM)
 }
   
@@ -159,8 +162,11 @@ parse_sssom <- function(config,localpath=F) {
     #data.table syntax
     unknown_or_missing <- tsv[, .(object_id = `sssom:object_id`,
                                   object_category = `sssom:object_category`,
-                                  RegexRemoval = unlist(tstrsplit(`semapv:RegexRemoval`, 
-                                                                  "\\|"))), 
+                                  RegexRemoval = {
+        z <- unlist(tstrsplit(`semapv:RegexRemoval`, "\\|"))
+        if (is.null(z)) character() else z
+      }
+    ), 
                               by = .(`sssom:object_id`,`sssom:object_category`)]
     #list unique values to be excluded
     check_all = count(unknown_or_missing,RegexRemoval) %>%
@@ -300,6 +306,7 @@ parse_sssom <- function(config,localpath=F) {
       }
     }
   }
+  #print(newschema)
   return(newschema)
 }
 

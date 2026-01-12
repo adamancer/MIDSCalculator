@@ -16,7 +16,7 @@ sssom_map <- c(
   mapping_set_title     = "Title",
   mapping_set_description = "Description",
   object_type = "Standard and Format",
-  subject_type = "Domain",
+  subject_type = "Discipline",
   mapping_date      = "Mapping Date",
   mapping_set_id = "Mapping ID"
 )
