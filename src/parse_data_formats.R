@@ -79,7 +79,7 @@ parse_minext_zip <- function(filename,
 
   # the two used categories are hardcoded right now
   # this is the core category as it's listed in the SSSOM mappings
-  category = "[minext:CompoundSpecimens]"
+  category = "[geoext:CompoundSpecimens]"
   
   # filter the properties of the core and remove the category namespace
   core_select_props = select_props %>%
@@ -109,7 +109,7 @@ parse_minext_zip <- function(filename,
   #delete the unzipped file after reading it
   file.remove(extension_filename)
   
-  extension_category = "[minext:ConstituentParts]"
+  extension_category = "[geoext:ConstituentParts]"
   # filter the properties of the core or extension
   extension_select_props = select_props %>%
     tibble(data = .) %>%
@@ -144,7 +144,7 @@ parse_minext_zip <- function(filename,
   # join both data files
   core_data %<>%
     left_join(extension_data,
-              by=c("[minext:CompoundSpecimens]dwc:materialEntityID"="[minext:ConstituentParts]dwc:materialEntityID"))
+              by=c("[geoext:CompoundSpecimens]dwc:materialEntityID"="[geoext:ConstituentParts]dwc:materialEntityID"))
   
   return(core_data)
 }
