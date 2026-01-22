@@ -30,8 +30,8 @@ parse_data_file <- function(filename,
                                  session))
   }
   
-  if (config$app$format == "dwc-minext") {
-    return(parse_minext_zip(filename,
+  if (config$app$format == "dwc-geoext") {
+    return(parse_geoext_zip(filename,
                             config,
                             select_props,
                             uom,
@@ -39,7 +39,7 @@ parse_data_file <- function(filename,
   }
 }
 
-parse_minext_zip <- function(filename,
+parse_geoext_zip <- function(filename,
                              config,
                              select_props,
                              uom,
@@ -50,13 +50,13 @@ parse_minext_zip <- function(filename,
   # filename of the "core" file - the Compound Specimens
   # based on name prefix
   core_filename = zipped_files %>%
-    filter(grepl("minext_compound_specimens_",Name)) %>%
+    filter(grepl("geoext_compound_specimens_",Name)) %>%
     pull(1)
   
   # filename of the "extension" file - the constituent parts
   # based on name prefix
   extension_filename = zipped_files %>%
-    filter(grepl("minext_constituent_parts_",Name)) %>%
+    filter(grepl("geoext_constituent_parts_",Name)) %>%
     pull(1)
   
   if (exists("session")&!is.null(session)) {
